@@ -1,0 +1,192 @@
+// This Pine Script(TM) is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Support/Resistance Zones based on 1H chart
+
+//@version=6
+indicator("S/R Zones (1H)", overlay=true, max_boxes_count=500)
+
+// --- Inputs ---
+pivotLen        = input.int(5, "Pivot Lookback Length", minval=2, maxval=20)
+zoneWidthPct    = input.float(0.3, "Zone Width (%)", minval=0.05, maxval=2.0, step=0.05)
+maxZones        = input.int(10, "Max Zones to Display", minval=1, maxval=50)
+extendBars      = input.int(200, "Extend Zone (bars)", minval=10, maxval=500)
+supportColor    = input.color(color.new(color.green, 80), "Support Zone Color")
+resistanceColor = input.color(color.new(color.red, 80), "Resistance Zone Color")
+supportBorder   = input.color(color.new(color.green, 50), "Support Border Color")
+resistanceBorder = input.color(color.new(color.red, 50), "Resistance Border Color")
+minTouches      = input.int(2, "Min Touches to Confirm Zone", minval=1, maxval=5)
+
+// --- Request 1H data ---
+[h1High, h1Low, h1Close, h1Volume] = request.security(syminfo.tickerid, "60", [high, low, close, volume])
+
+// --- Detect pivot highs and lows on 1H data ---
+pivotHigh = ta.pivothigh(h1High, pivotLen, pivotLen)
+pivotLow  = ta.pivotlow(h1Low, pivotLen, pivotLen)
+
+// --- Zone storage ---
+var float[] supLevels  = array.new_float()
+var int[]   supTouches = array.new_int()
+var int[]   supBars    = array.new_int()
+var float[] resLevels  = array.new_float()
+var int[]   resTouches = array.new_int()
+var int[]   resBars    = array.new_int()
+
+// --- Add or update support zones ---
+if not na(pivotLow)
+    foundIdx = -1
+    sz = array.size(supLevels)
+    if sz > 0
+        for i = 0 to sz - 1
+            lvl = array.get(supLevels, i)
+            if math.abs(pivotLow - lvl) / lvl * 100 < zoneWidthPct * 2
+                foundIdx := i
+                break
+    if foundIdx >= 0
+        avg = (array.get(supLevels, foundIdx) + pivotLow) / 2
+        array.set(supLevels, foundIdx, avg)
+        array.set(supTouches, foundIdx, array.get(supTouches, foundIdx) + 1)
+        array.set(supBars, foundIdx, bar_index - pivotLen)
+    else
+        array.push(supLevels, pivotLow)
+        array.push(supTouches, 1)
+        array.push(supBars, bar_index - pivotLen)
+
+// --- Add or update resistance zones ---
+if not na(pivotHigh)
+    foundIdx = -1
+    sz = array.size(resLevels)
+    if sz > 0
+        for i = 0 to sz - 1
+            lvl = array.get(resLevels, i)
+            if math.abs(pivotHigh - lvl) / lvl * 100 < zoneWidthPct * 2
+                foundIdx := i
+                break
+    if foundIdx >= 0
+        avg = (array.get(resLevels, foundIdx) + pivotHigh) / 2
+        array.set(resLevels, foundIdx, avg)
+        array.set(resTouches, foundIdx, array.get(resTouches, foundIdx) + 1)
+        array.set(resBars, foundIdx, bar_index - pivotLen)
+    else
+        array.push(resLevels, pivotHigh)
+        array.push(resTouches, 1)
+        array.push(resBars, bar_index - pivotLen)
+
+// --- Remove broken zones ---
+// Support broken if close drops well below it
+sz_sup = array.size(supLevels)
+if sz_sup > 0
+    for i = sz_sup - 1 to 0
+        lvl = array.get(supLevels, i)
+        if h1Close < lvl * (1 - zoneWidthPct * 2 / 100)
+            array.remove(supLevels, i)
+            array.remove(supTouches, i)
+            array.remove(supBars, i)
+
+// Resistance broken if close rises well above it
+sz_res = array.size(resLevels)
+if sz_res > 0
+    for i = sz_res - 1 to 0
+        lvl = array.get(resLevels, i)
+        if h1Close > lvl * (1 + zoneWidthPct * 2 / 100)
+            array.remove(resLevels, i)
+            array.remove(resTouches, i)
+            array.remove(resBars, i)
+
+// --- Trim to max zones (keep most-touched, most-recent) ---
+while array.size(supLevels) > maxZones
+    minIdx = 0
+    minScore = 999999.0
+    for i = 0 to array.size(supLevels) - 1
+        score = array.get(supTouches, i) * 1000.0 + float(bar_index - array.get(supBars, i))
+        if score < minScore
+            minScore := score
+            minIdx := i
+    array.remove(supLevels, minIdx)
+    array.remove(supTouches, minIdx)
+    array.remove(supBars, minIdx)
+
+while array.size(resLevels) > maxZones
+    minIdx = 0
+    minScore = 999999.0
+    for i = 0 to array.size(resLevels) - 1
+        score = array.get(resTouches, i) * 1000.0 + float(bar_index - array.get(resBars, i))
+        if score < minScore
+            minScore := score
+            minIdx := i
+    array.remove(resLevels, minIdx)
+    array.remove(resTouches, minIdx)
+    array.remove(resBars, minIdx)
+
+// --- Draw zones on last bar ---
+if barstate.islast
+    // Clear previous boxes
+    for b in box.all
+        box.delete(b)
+
+    // Draw support zones
+    sz1 = array.size(supLevels)
+    if sz1 > 0
+        for i = 0 to sz1 - 1
+            lvl = array.get(supLevels, i)
+            tch = array.get(supTouches, i)
+            if tch >= minTouches
+                halfWidth = lvl * zoneWidthPct / 100
+                topPrice = lvl + halfWidth
+                btmPrice = lvl - halfWidth
+                startBar = math.max(0, bar_index - extendBars)
+                box.new(startBar, topPrice, bar_index + 20, btmPrice,
+                     border_color=supportBorder, border_width=1,
+                     bgcolor=supportColor,
+                     text=str.tostring(tch) + " touches",
+                     text_color=color.new(color.green, 30),
+                     text_size=size.tiny,
+                     text_halign=text.align_right)
+
+    // Draw resistance zones
+    sz2 = array.size(resLevels)
+    if sz2 > 0
+        for i = 0 to sz2 - 1
+            lvl = array.get(resLevels, i)
+            tch = array.get(resTouches, i)
+            if tch >= minTouches
+                halfWidth = lvl * zoneWidthPct / 100
+                topPrice = lvl + halfWidth
+                btmPrice = lvl - halfWidth
+                startBar = math.max(0, bar_index - extendBars)
+                box.new(startBar, topPrice, bar_index + 20, btmPrice,
+                     border_color=resistanceBorder, border_width=1,
+                     bgcolor=resistanceColor,
+                     text=str.tostring(tch) + " touches",
+                     text_color=color.new(color.red, 30),
+                     text_size=size.tiny,
+                     text_halign=text.align_right)
+
+// --- Alerts ---
+nearSupport = false
+nearResistance = false
+
+sz3 = array.size(supLevels)
+if sz3 > 0
+    for i = 0 to sz3 - 1
+        lvl = array.get(supLevels, i)
+        if array.get(supTouches, i) >= minTouches
+            if math.abs(h1Close - lvl) / lvl * 100 < zoneWidthPct
+                nearSupport := true
+
+sz4 = array.size(resLevels)
+if sz4 > 0
+    for i = 0 to sz4 - 1
+        lvl = array.get(resLevels, i)
+        if array.get(resTouches, i) >= minTouches
+            if math.abs(h1Close - lvl) / lvl * 100 < zoneWidthPct
+                nearResistance := true
+
+alertcondition(nearSupport, "Near Support Zone", "Price is entering a support zone")
+alertcondition(nearResistance, "Near Resistance Zone", "Price is entering a resistance zone")
+
+// --- Info table ---
+var table infoTable = table.new(position.top_right, 2, 2, bgcolor=color.new(color.gray, 85))
+if barstate.islast
+    table.cell(infoTable, 0, 0, "Support Zones", text_color=color.green, text_size=size.small)
+    table.cell(infoTable, 1, 0, str.tostring(array.size(supLevels)), text_color=color.green, text_size=size.small)
+    table.cell(infoTable, 0, 1, "Resistance Zones", text_color=color.red, text_size=size.small)
+    table.cell(infoTable, 1, 1, str.tostring(array.size(resLevels)), text_color=color.red, text_size=size.small)

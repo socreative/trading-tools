@@ -1,0 +1,146 @@
+// This Pine Script(TM) is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Up to 5 Simple Moving Averages, always calculated on 1-day data, on any chart timeframe
+
+//@version=6
+indicator("Multi SMA (Daily)", shorttitle="Multi SMA (D)", overlay=true, max_labels_count=500)
+
+// --- Timeframe (fixed on purpose: these are always daily SMAs) ---
+SMA_TF = "1D"
+
+// When the chart is already daily or higher, calculate locally instead of requesting a
+// lower timeframe, which would return misleading values on weekly/monthly charts.
+useLocal = timeframe.in_seconds(timeframe.period) >= timeframe.in_seconds(SMA_TF)
+
+// --- Global style / label inputs ---
+grpGlobal   = "Global"
+dashLen     = input.int(4, "Dash / dot spacing (bars)", minval=1, maxval=20, group=grpGlobal, tooltip="Measured in chart bars. Sets the length of each dash for SMAs styled Dashed, and the gap between dots for SMAs styled Dotted.")
+showLabels  = input.bool(true, "Show labels on last bar", group=grpGlobal)
+labelOffset = input.int(5, "Label offset (bars)", minval=0, maxval=100, group=grpGlobal)
+labelSizeIn = input.string("Small", "Label size", options=["Tiny", "Small", "Normal"], group=grpGlobal)
+
+// --- Per-SMA inputs ---
+g1 = "SMA 1"
+show1 = input.bool(true,        "",       inline="1a", group=g1)
+len1  = input.int(20,           "Length", inline="1a", group=g1, minval=1, maxval=5000)
+c1    = input.color(color.blue, "",       inline="1a", group=g1)
+w1    = input.int(1,            "Width",  inline="1a", group=g1, minval=1, maxval=4)
+st1   = input.string("Solid",   "",       inline="1b", group=g1, options=["Solid", "Dashed", "Dotted"])
+src1  = input.source(close,     "Source", inline="1b", group=g1)
+off1  = input.int(0,            "Offset", inline="1b", group=g1, minval=-500, maxval=500)
+
+g2 = "SMA 2"
+show2 = input.bool(true,          "",       inline="2a", group=g2)
+len2  = input.int(50,             "Length", inline="2a", group=g2, minval=1, maxval=5000)
+c2    = input.color(color.orange, "",       inline="2a", group=g2)
+w2    = input.int(1,              "Width",  inline="2a", group=g2, minval=1, maxval=4)
+st2   = input.string("Solid",     "",       inline="2b", group=g2, options=["Solid", "Dashed", "Dotted"])
+src2  = input.source(close,       "Source", inline="2b", group=g2)
+off2  = input.int(0,              "Offset", inline="2b", group=g2, minval=-500, maxval=500)
+
+g3 = "SMA 3"
+show3 = input.bool(true,          "",       inline="3a", group=g3)
+len3  = input.int(100,            "Length", inline="3a", group=g3, minval=1, maxval=5000)
+c3    = input.color(color.purple, "",       inline="3a", group=g3)
+w3    = input.int(2,              "Width",  inline="3a", group=g3, minval=1, maxval=4)
+st3   = input.string("Solid",     "",       inline="3b", group=g3, options=["Solid", "Dashed", "Dotted"])
+src3  = input.source(close,       "Source", inline="3b", group=g3)
+off3  = input.int(0,              "Offset", inline="3b", group=g3, minval=-500, maxval=500)
+
+g4 = "SMA 4"
+show4 = input.bool(true,       "",       inline="4a", group=g4)
+len4  = input.int(200,         "Length", inline="4a", group=g4, minval=1, maxval=5000)
+c4    = input.color(color.red, "",       inline="4a", group=g4)
+w4    = input.int(2,           "Width",  inline="4a", group=g4, minval=1, maxval=4)
+st4   = input.string("Solid",  "",       inline="4b", group=g4, options=["Solid", "Dashed", "Dotted"])
+src4  = input.source(close,    "Source", inline="4b", group=g4)
+off4  = input.int(0,           "Offset", inline="4b", group=g4, minval=-500, maxval=500)
+
+g5 = "SMA 5"
+show5 = input.bool(false,       "",       inline="5a", group=g5)
+len5  = input.int(10,           "Length", inline="5a", group=g5, minval=1, maxval=5000)
+c5    = input.color(color.aqua, "",       inline="5a", group=g5)
+w5    = input.int(1,            "Width",  inline="5a", group=g5, minval=1, maxval=4)
+st5   = input.string("Solid",   "",       inline="5b", group=g5, options=["Solid", "Dashed", "Dotted"])
+src5  = input.source(close,     "Source", inline="5b", group=g5)
+off5  = input.int(0,            "Offset", inline="5b", group=g5, minval=-500, maxval=500)
+
+// --- Request the daily SMAs ---
+// Default lookahead_off with no historical offset: closed daily values on history, and a
+// live-updating value for the day in progress. Same behaviour as the built-in SMA with its
+// Timeframe field set to 1 day. Kept at the top level so every call runs on every bar.
+d1 = request.security(syminfo.tickerid, SMA_TF, ta.sma(src1, len1))
+d2 = request.security(syminfo.tickerid, SMA_TF, ta.sma(src2, len2))
+d3 = request.security(syminfo.tickerid, SMA_TF, ta.sma(src3, len3))
+d4 = request.security(syminfo.tickerid, SMA_TF, ta.sma(src4, len4))
+d5 = request.security(syminfo.tickerid, SMA_TF, ta.sma(src5, len5))
+
+sma1 = useLocal ? ta.sma(src1, len1) : d1
+sma2 = useLocal ? ta.sma(src2, len2) : d2
+sma3 = useLocal ? ta.sma(src3, len3) : d3
+sma4 = useLocal ? ta.sma(src4, len4) : d4
+sma5 = useLocal ? ta.sma(src5, len5) : d5
+
+// --- Line style masks ---
+// plot() needs a compile-time constant style, so each SMA gets three plots (solid, dashed,
+// dotted) and the dropdown decides which one carries data. plot.style_linebr breaks the line
+// at na values instead of bridging them, which is what turns the mask into real dashes.
+// Dotted uses plot.style_circles so a single masked bar still renders as a visible dot.
+dashOn = bar_index % (dashLen * 2) < dashLen
+dotOn  = bar_index % math.max(2, dashLen) == 0
+
+// --- Plots ---
+// The solid plot always carries the value so the price scale label and data window stay
+// populated; its color goes transparent when a dashed or dotted style is selected.
+// Every plot is editable=false, which keeps all three variants out of the Style tab. Otherwise
+// each SMA would show three color pickers there, none of which do anything, since the color
+// comes from the input above. One color per SMA, in the Inputs tab.
+plot(show1 ? sma1 : na, "SMA 1", color=st1 == "Solid" ? c1 : na, linewidth=w1, offset=off1, editable=false)
+plot(show1 and st1 == "Dashed" and dashOn ? sma1 : na, "SMA 1 dash", color=c1, linewidth=w1, offset=off1, style=plot.style_linebr, display=display.pane, editable=false)
+plot(show1 and st1 == "Dotted" and dotOn  ? sma1 : na, "SMA 1 dot",  color=c1, linewidth=w1, offset=off1, style=plot.style_circles, display=display.pane, editable=false)
+
+plot(show2 ? sma2 : na, "SMA 2", color=st2 == "Solid" ? c2 : na, linewidth=w2, offset=off2, editable=false)
+plot(show2 and st2 == "Dashed" and dashOn ? sma2 : na, "SMA 2 dash", color=c2, linewidth=w2, offset=off2, style=plot.style_linebr, display=display.pane, editable=false)
+plot(show2 and st2 == "Dotted" and dotOn  ? sma2 : na, "SMA 2 dot",  color=c2, linewidth=w2, offset=off2, style=plot.style_circles, display=display.pane, editable=false)
+
+plot(show3 ? sma3 : na, "SMA 3", color=st3 == "Solid" ? c3 : na, linewidth=w3, offset=off3, editable=false)
+plot(show3 and st3 == "Dashed" and dashOn ? sma3 : na, "SMA 3 dash", color=c3, linewidth=w3, offset=off3, style=plot.style_linebr, display=display.pane, editable=false)
+plot(show3 and st3 == "Dotted" and dotOn  ? sma3 : na, "SMA 3 dot",  color=c3, linewidth=w3, offset=off3, style=plot.style_circles, display=display.pane, editable=false)
+
+plot(show4 ? sma4 : na, "SMA 4", color=st4 == "Solid" ? c4 : na, linewidth=w4, offset=off4, editable=false)
+plot(show4 and st4 == "Dashed" and dashOn ? sma4 : na, "SMA 4 dash", color=c4, linewidth=w4, offset=off4, style=plot.style_linebr, display=display.pane, editable=false)
+plot(show4 and st4 == "Dotted" and dotOn  ? sma4 : na, "SMA 4 dot",  color=c4, linewidth=w4, offset=off4, style=plot.style_circles, display=display.pane, editable=false)
+
+plot(show5 ? sma5 : na, "SMA 5", color=st5 == "Solid" ? c5 : na, linewidth=w5, offset=off5, editable=false)
+plot(show5 and st5 == "Dashed" and dashOn ? sma5 : na, "SMA 5 dash", color=c5, linewidth=w5, offset=off5, style=plot.style_linebr, display=display.pane, editable=false)
+plot(show5 and st5 == "Dotted" and dotOn  ? sma5 : na, "SMA 5 dot",  color=c5, linewidth=w5, offset=off5, style=plot.style_circles, display=display.pane, editable=false)
+
+// --- Labels on the last bar ---
+labelSize = labelSizeIn == "Tiny" ? size.tiny : labelSizeIn == "Normal" ? size.normal : size.small
+// Names the timeframe the values actually came from: "1D" normally, or the chart timeframe
+// on daily-and-above charts where the SMA is calculated locally.
+tfSuffix  = useLocal ? timeframe.period : "1D"
+
+var label lb1 = na
+var label lb2 = na
+var label lb3 = na
+var label lb4 = na
+var label lb5 = na
+
+if barstate.islast
+    label.delete(lb1)
+    label.delete(lb2)
+    label.delete(lb3)
+    label.delete(lb4)
+    label.delete(lb5)
+
+    if showLabels
+        if show1 and not na(sma1)
+            lb1 := label.new(bar_index + labelOffset + off1, sma1, "SMA " + str.tostring(len1) + " (" + tfSuffix + ")  " + str.tostring(sma1, format.mintick), style=label.style_label_left, color=color.new(color.black, 100), textcolor=c1, size=labelSize)
+        if show2 and not na(sma2)
+            lb2 := label.new(bar_index + labelOffset + off2, sma2, "SMA " + str.tostring(len2) + " (" + tfSuffix + ")  " + str.tostring(sma2, format.mintick), style=label.style_label_left, color=color.new(color.black, 100), textcolor=c2, size=labelSize)
+        if show3 and not na(sma3)
+            lb3 := label.new(bar_index + labelOffset + off3, sma3, "SMA " + str.tostring(len3) + " (" + tfSuffix + ")  " + str.tostring(sma3, format.mintick), style=label.style_label_left, color=color.new(color.black, 100), textcolor=c3, size=labelSize)
+        if show4 and not na(sma4)
+            lb4 := label.new(bar_index + labelOffset + off4, sma4, "SMA " + str.tostring(len4) + " (" + tfSuffix + ")  " + str.tostring(sma4, format.mintick), style=label.style_label_left, color=color.new(color.black, 100), textcolor=c4, size=labelSize)
+        if show5 and not na(sma5)
+            lb5 := label.new(bar_index + labelOffset + off5, sma5, "SMA " + str.tostring(len5) + " (" + tfSuffix + ")  " + str.tostring(sma5, format.mintick), style=label.style_label_left, color=color.new(color.black, 100), textcolor=c5, size=labelSize)

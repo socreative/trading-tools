@@ -1,0 +1,204 @@
+// This Pine Script(TM) is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Reversal BUY/SELL Signals on 5min chart
+
+//@version=6
+indicator("Reversal Signals (5m)", overlay=true, max_labels_count=500)
+
+// --- Inputs ---
+grpConfluence   = "Confluence Filters"
+useRsi          = input.bool(true, "Use RSI", group=grpConfluence)
+rsiLen          = input.int(14, "RSI Length", minval=2, maxval=50, group=grpConfluence)
+rsiOB           = input.int(70, "RSI Overbought", minval=60, maxval=90, group=grpConfluence)
+rsiOS           = input.int(30, "RSI Oversold", minval=10, maxval=40, group=grpConfluence)
+useStoch        = input.bool(true, "Use Stochastic", group=grpConfluence)
+stochK          = input.int(14, "Stoch %K Length", minval=2, maxval=50, group=grpConfluence)
+stochSmK        = input.int(3, "Stoch %K Smooth", minval=1, maxval=10, group=grpConfluence)
+stochSmD        = input.int(3, "Stoch %D Smooth", minval=1, maxval=10, group=grpConfluence)
+stochOB         = input.int(80, "Stoch Overbought", minval=60, maxval=95, group=grpConfluence)
+stochOS         = input.int(20, "Stoch Oversold", minval=5, maxval=40, group=grpConfluence)
+useVolSpike     = input.bool(true, "Require Volume Spike", group=grpConfluence)
+volMultiplier   = input.float(1.5, "Volume Spike Multiplier", minval=1.0, maxval=5.0, step=0.1, group=grpConfluence)
+volAvgLen       = input.int(20, "Volume Average Length", minval=5, maxval=100, group=grpConfluence)
+
+grpStructure    = "Price Structure"
+useEngulfing    = input.bool(true, "Engulfing Candles", group=grpStructure)
+usePinBar       = input.bool(true, "Pin Bars / Hammers", group=grpStructure)
+pinBarRatio     = input.float(2.0, "Pin Bar Wick:Body Ratio", minval=1.5, maxval=5.0, step=0.1, group=grpStructure)
+useDivergence   = input.bool(true, "RSI Divergence", group=grpStructure)
+divLookback     = input.int(10, "Divergence Lookback Bars", minval=3, maxval=30, group=grpStructure)
+
+grpEma          = "Trend Context"
+useEmaFilter    = input.bool(false, "EMA Trend Filter (only trade with trend)", group=grpEma)
+emaLen          = input.int(50, "EMA Length", minval=10, maxval=200, group=grpEma)
+
+grpVisual       = "Visual"
+minConfluence   = input.int(2, "Min Confluence Score to Signal", minval=1, maxval=5, group=grpVisual)
+showScore       = input.bool(true, "Show Confluence Score", group=grpVisual)
+buyColor        = input.color(color.lime, "BUY Signal Color", group=grpVisual)
+sellColor       = input.color(color.red, "SELL Signal Color", group=grpVisual)
+
+// --- Request 5m data ---
+[m5Open, m5High, m5Low, m5Close, m5Volume] = request.security(syminfo.tickerid, "5", [open, high, low, close, volume])
+
+// Previous bar values on 5m
+[m5Open1, m5High1, m5Low1, m5Close1] = request.security(syminfo.tickerid, "5", [open[1], high[1], low[1], close[1]])
+[m5Open2, m5High2, m5Low2, m5Close2] = request.security(syminfo.tickerid, "5", [open[2], high[2], low[2], close[2]])
+
+// --- Indicators on 5m data ---
+m5Rsi = request.security(syminfo.tickerid, "5", ta.rsi(close, rsiLen))
+m5Rsi1 = request.security(syminfo.tickerid, "5", ta.rsi(close, rsiLen)[1])
+
+m5StochRawK = request.security(syminfo.tickerid, "5", ta.sma(ta.stoch(close, high, low, stochK), stochSmK))
+m5StochD = request.security(syminfo.tickerid, "5", ta.sma(ta.sma(ta.stoch(close, high, low, stochK), stochSmK), stochSmD))
+m5StochRawK1 = request.security(syminfo.tickerid, "5", ta.sma(ta.stoch(close, high, low, stochK), stochSmK)[1])
+m5StochD1 = request.security(syminfo.tickerid, "5", ta.sma(ta.sma(ta.stoch(close, high, low, stochK), stochSmK), stochSmD)[1])
+
+m5VolAvg = request.security(syminfo.tickerid, "5", ta.sma(volume, volAvgLen))
+m5Ema = request.security(syminfo.tickerid, "5", ta.ema(close, emaLen))
+
+// Divergence lookback lows/highs on 5m
+m5RsiLow = request.security(syminfo.tickerid, "5", ta.lowest(ta.rsi(close, rsiLen), divLookback))
+m5PriceLow = request.security(syminfo.tickerid, "5", ta.lowest(low, divLookback))
+m5RsiHigh = request.security(syminfo.tickerid, "5", ta.highest(ta.rsi(close, rsiLen), divLookback))
+m5PriceHigh = request.security(syminfo.tickerid, "5", ta.highest(high, divLookback))
+
+m5PriceLow1 = request.security(syminfo.tickerid, "5", ta.lowest(low, divLookback)[divLookback])
+m5RsiLow1 = request.security(syminfo.tickerid, "5", ta.lowest(ta.rsi(close, rsiLen), divLookback)[divLookback])
+m5PriceHigh1 = request.security(syminfo.tickerid, "5", ta.highest(high, divLookback)[divLookback])
+m5RsiHigh1 = request.security(syminfo.tickerid, "5", ta.highest(ta.rsi(close, rsiLen), divLookback)[divLookback])
+
+// --- Candle metrics ---
+body = math.abs(m5Close - m5Open)
+upperWick = m5High - math.max(m5Open, m5Close)
+lowerWick = math.min(m5Open, m5Close) - m5Low
+candleRange = m5High - m5Low
+
+body1 = math.abs(m5Close1 - m5Open1)
+
+// --- Pattern Detection ---
+
+// Bullish engulfing: previous red candle, current green candle that engulfs it
+bullEngulf = useEngulfing and m5Close1 < m5Open1 and m5Close > m5Open and m5Open <= m5Close1 and m5Close >= m5Open1
+
+// Bearish engulfing: previous green candle, current red candle that engulfs it
+bearEngulf = useEngulfing and m5Close1 > m5Open1 and m5Close < m5Open and m5Open >= m5Close1 and m5Close <= m5Open1
+
+// Bullish pin bar / hammer: long lower wick, small body at top
+bullPin = usePinBar and lowerWick > body * pinBarRatio and upperWick < body and candleRange > 0
+
+// Bearish pin bar / shooting star: long upper wick, small body at bottom
+bearPin = usePinBar and upperWick > body * pinBarRatio and lowerWick < body and candleRange > 0
+
+// Bullish divergence: price makes lower low but RSI makes higher low
+bullDiv = useDivergence and m5PriceLow < m5PriceLow1 and m5RsiLow > m5RsiLow1
+
+// Bearish divergence: price makes higher high but RSI makes lower high
+bearDiv = useDivergence and m5PriceHigh > m5PriceHigh1 and m5RsiHigh < m5RsiHigh1
+
+// --- Confluence Scoring ---
+buyScore = 0
+sellScore = 0
+
+// RSI oversold / overbought
+if useRsi and m5Rsi <= rsiOS
+    buyScore += 1
+if useRsi and m5Rsi >= rsiOB
+    sellScore += 1
+
+// Stochastic crossover in extreme zone
+stochBullCross = m5StochRawK1 < m5StochD1 and m5StochRawK > m5StochD
+stochBearCross = m5StochRawK1 > m5StochD1 and m5StochRawK < m5StochD
+
+if useStoch and m5StochRawK < stochOS and stochBullCross
+    buyScore += 1
+if useStoch and m5StochRawK > stochOB and stochBearCross
+    sellScore += 1
+
+// Volume spike
+volSpike = m5Volume > m5VolAvg * volMultiplier
+if useVolSpike and volSpike
+    buyScore += 1
+    sellScore += 1
+
+// Engulfing
+if bullEngulf
+    buyScore += 1
+if bearEngulf
+    sellScore += 1
+
+// Pin bars
+if bullPin
+    buyScore += 1
+if bearPin
+    sellScore += 1
+
+// Divergence
+if bullDiv
+    buyScore += 1
+if bearDiv
+    sellScore += 1
+
+// --- Trend Filter ---
+aboveEma = m5Close > m5Ema
+belowEma = m5Close < m5Ema
+
+buyAllowed  = useEmaFilter ? belowEma == false : true
+sellAllowed = useEmaFilter ? aboveEma == false : true
+
+// --- Signal Logic ---
+buySignal  = buyScore >= minConfluence and buyAllowed
+sellSignal = sellScore >= minConfluence and sellAllowed
+
+// --- Prevent consecutive duplicate signals ---
+var int lastSignal = 0  // 1 = buy, -1 = sell
+buyFiltered  = buySignal and lastSignal != 1
+sellFiltered = sellSignal and lastSignal != -1
+
+if buyFiltered
+    lastSignal := 1
+if sellFiltered
+    lastSignal := -1
+
+// --- Draw signals ---
+if buyFiltered
+    lbl = label.new(bar_index, m5Low, "BUY" + (showScore ? "\n" + str.tostring(buyScore) : ""),
+         style=label.style_label_up,
+         color=buyColor,
+         textcolor=color.white,
+         size=size.small)
+
+if sellFiltered
+    lbl = label.new(bar_index, m5High, "SELL" + (showScore ? "\n" + str.tostring(sellScore) : ""),
+         style=label.style_label_down,
+         color=sellColor,
+         textcolor=color.white,
+         size=size.small)
+
+// --- Background flash on signal ---
+bgcolor(buyFiltered ? color.new(buyColor, 90) : na)
+bgcolor(sellFiltered ? color.new(sellColor, 90) : na)
+
+// --- Plot EMA if trend filter is on ---
+plot(useEmaFilter ? m5Ema : na, "EMA", color=color.orange, linewidth=1)
+
+// --- Alerts ---
+alertcondition(buyFiltered, "BUY Reversal Signal", "Bullish reversal detected on 5m chart")
+alertcondition(sellFiltered, "SELL Reversal Signal", "Bearish reversal detected on 5m chart")
+
+// --- Info Table ---
+var table infoTbl = table.new(position.bottom_right, 2, 7, bgcolor=color.new(color.gray, 85), border_width=1)
+if barstate.islast
+    table.cell(infoTbl, 0, 0, "Indicator", text_color=color.white, text_size=size.tiny)
+    table.cell(infoTbl, 1, 0, "Value", text_color=color.white, text_size=size.tiny)
+    table.cell(infoTbl, 0, 1, "RSI", text_color=color.white, text_size=size.tiny)
+    table.cell(infoTbl, 1, 1, str.tostring(m5Rsi, "#.0"), text_color=m5Rsi <= rsiOS ? color.lime : m5Rsi >= rsiOB ? color.red : color.white, text_size=size.tiny)
+    table.cell(infoTbl, 0, 2, "Stoch %K", text_color=color.white, text_size=size.tiny)
+    table.cell(infoTbl, 1, 2, str.tostring(m5StochRawK, "#.0"), text_color=m5StochRawK <= stochOS ? color.lime : m5StochRawK >= stochOB ? color.red : color.white, text_size=size.tiny)
+    table.cell(infoTbl, 0, 3, "Volume Spike", text_color=color.white, text_size=size.tiny)
+    table.cell(infoTbl, 1, 3, volSpike ? "YES" : "NO", text_color=volSpike ? color.yellow : color.gray, text_size=size.tiny)
+    table.cell(infoTbl, 0, 4, "Buy Score", text_color=color.white, text_size=size.tiny)
+    table.cell(infoTbl, 1, 4, str.tostring(buyScore), text_color=buyScore >= minConfluence ? color.lime : color.gray, text_size=size.tiny)
+    table.cell(infoTbl, 0, 5, "Sell Score", text_color=color.white, text_size=size.tiny)
+    table.cell(infoTbl, 1, 5, str.tostring(sellScore), text_color=sellScore >= minConfluence ? color.red : color.gray, text_size=size.tiny)
+    table.cell(infoTbl, 0, 6, "Min Confluence", text_color=color.white, text_size=size.tiny)
+    table.cell(infoTbl, 1, 6, str.tostring(minConfluence), text_color=color.white, text_size=size.tiny)
