@@ -16,7 +16,7 @@ All three read their data from a fixed timeframe with `request.security()` rathe
 
 Up to 5 Simple Moving Averages, all calculated on daily bars whatever the chart timeframe. Behaves like the built-in Simple Moving Average with its Timeframe field set to 1 day, except one copy covers five lengths. Defaults are the daily 20, 50, 100 and 200, plus a spare slot.
 
-Each SMA has its own length, source, offset, color, width and line style (solid, dashed or dotted). Optional labels at the right edge name each line and its current value. On weekly and monthly charts the calculation falls back to the chart's own timeframe, since daily values cannot be drawn meaningfully there.
+Each SMA has its own length, source and offset in the Inputs tab, with color, thickness and line style left to TradingView's Style tab. Optional labels at the right edge name each line and its current value. On weekly and monthly charts the calculation falls back to the chart's own timeframe, since daily values cannot be drawn meaningfully there.
 
 Use it to keep the daily levels swing traders watch visible while trading intraday.
 
