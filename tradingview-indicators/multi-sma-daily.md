@@ -1,4 +1,6 @@
-# Multi SMA (Daily) - TradingView Indicator
+# ExposureTrade - Multi SMA (Daily)
+
+TradingView indicator, Pine Script v6.
 
 A Pine Script v6 indicator that plots up to 5 Simple Moving Averages, all calculated on **1-day** data no matter what timeframe the chart is on. It behaves like TradingView's built-in Simple Moving Average with its Timeframe field set to 1 day, except that one copy of the indicator covers five lengths instead of one.
 
@@ -60,6 +62,26 @@ Labels sit at the SMA's own price, so two SMAs at nearly the same value will ove
 ### 6. Where the Styling Lives
 
 Everything is in the **Inputs** tab: one color, one width and one line style per SMA. The Style tab is deliberately empty for this indicator, so there is a single place to change any given setting and no dead controls.
+
+### 7. Status Line
+
+TradingView appends the value of every input and every plot to the indicator name in the chart status line. Left alone, with 39 inputs, that produces a line reading `ExposureTrade - Multi SMA (Daily) 4 5 Small 20 1 Solid close 0 50 1 Solid close 0 ...`.
+
+So the status line is curated:
+
+- Every input except the five lengths is `display=display.none`.
+- The five length inputs are `display=display.status_line`.
+- The SMA plots omit `display.status_line`, keeping `display.pane + display.price_scale + display.data_window`.
+
+The status line therefore reads:
+
+```
+ExposureTrade - Multi SMA (Daily)  20 50 100 200 10
+```
+
+Values are still available from the price scale, the data window and the right-edge labels.
+
+Input visibility is static, so a length appears in the status line whether or not its SMA is enabled. SMA 5 ships disabled, so its `10` shows by default. Set `len5` to `display=display.none` if you would rather see only the four active lengths.
 
 ## Settings
 

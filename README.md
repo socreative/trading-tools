@@ -6,13 +6,13 @@ TradingView indicators written in Pine Script v6. Each one lives in `tradingview
 
 | Indicator | File | Docs | Chart TF | Data TF |
 |---|---|---|---|---|
-| Multi SMA (Daily) | [`multi-sma-daily.pine`](tradingview-indicators/multi-sma-daily.pine) | [docs](tradingview-indicators/multi-sma-daily.md) | any | 1 day |
+| ExposureTrade - Multi SMA (Daily) | [`multi-sma-daily.pine`](tradingview-indicators/multi-sma-daily.pine) | [docs](tradingview-indicators/multi-sma-daily.md) | any | 1 day |
 | S/R Zones (1H) | [`support-resistance-zones.pine`](tradingview-indicators/support-resistance-zones.pine) | [docs](tradingview-indicators/support-resistance-zones.md) | any | 1 hour |
 | Reversal Signals (5m) | [`reversal-signals-5m.pine`](tradingview-indicators/reversal-signals-5m.pine) | [docs](tradingview-indicators/reversal-signals-5m.md) | 5 min | 5 min |
 
 All three read their data from a fixed timeframe with `request.security()` rather than from the chart. For the first two that means the levels stay anchored while you work on any timeframe you like. Reversal Signals also reads 5m data on any chart, but draws its labels at chart bars, so it is worth keeping on a 5m chart to avoid several signals collapsing into one bar.
 
-### Multi SMA (Daily)
+### ExposureTrade - Multi SMA (Daily)
 
 Up to 5 Simple Moving Averages, all calculated on daily bars whatever the chart timeframe. Behaves like the built-in Simple Moving Average with its Timeframe field set to 1 day, except one copy covers five lengths. Defaults are the daily 20, 50, 100 and 200, plus a spare slot.
 
