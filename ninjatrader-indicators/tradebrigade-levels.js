@@ -1,23 +1,24 @@
 /*
  * ExposureTrade - TradeBrigade Daily Levels - NinjaTrader Web custom indicator
  *
- * Draws a horizontal line at each price in LEVELS below. Each line runs the full
- * width of the chart, with its price labelled next to the price scale.
+ * Draws a horizontal line at each of up to 7 prices typed into the settings,
+ * one price per box (level1 ... level7). Each box has its own on/off switch
+ * (showLevel1 ... showLevel7), and a box left at 0 draws nothing. Each line runs
+ * the full width of the chart, with its price labelled next to the price scale.
  *
- * The levels live in the code because the NinjaTrader Web settings dialog doesn't
- * show text settings, so there is nowhere in the settings to paste a list.
+ * One box per price because the NinjaTrader Web settings dialog doesn't show text
+ * settings, and a number box holds a single number, so a comma-separated list
+ * can't be typed into either.
  *
  * Written without for...of loops: the Code Explorer editor reports them as
  * syntax errors.
  */
 
-// ===== PASTE THE DAY'S LEVELS BETWEEN THE QUOTES, THEN SAVE =====
-// Separate prices with commas. Use a dot for decimals: 6045.25, not 6045,25.
-const LEVELS = "29000, 28840, 28652, 28490, 28240, 28043, 27616";
-// =================================================================
-
 const predef = require("./tools/predef");
 const { du, px } = require("./tools/graphics");
+
+// Prices the 7 boxes start with when the indicator is added to a chart. 0 means empty.
+const DEFAULT_LEVELS = [29000, 28840, 28652, 28490, 28240, 28043, 27616];
 
 // Line style choices, mapped to the platform's DashLineStyle values (same as Daily Levels).
 const LINE_STYLES = {
@@ -28,8 +29,6 @@ const LINE_STYLES = {
     dashedTight: { label: "Fine dash", dash: 2 }  // ThreeOne
 };
 
-const NOTE_POSITION = { x: 260, y: 20 }; // pixels from the top-left of the plot area
-
 function lineStyleParam(def) {
     const options = {};
     Object.keys(LINE_STYLES).forEach(key => {
@@ -38,34 +37,28 @@ function lineStyleParam(def) {
     return predef.paramSpecs.enum(options, def);
 }
 
-// "6045.25, 6080; 6112.5" -> levels in the order typed, without repeats, plus anything unreadable.
-// Commas, semicolons and spaces all separate entries.
-function parseLevels(text) {
+// The prices from the boxes that are switched on and not empty, in box order, without repeats.
+function activeLevels(props) {
     const levels = [];
-    const invalid = [];
     const seen = {};
-    String(text || "").split(/[,;\s]+/).forEach(token => {
-        if (!token) {
+    DEFAULT_LEVELS.forEach((def, i) => {
+        const n = i + 1;
+        if (!props["showLevel" + n]) {
             return;
         }
-        const price = Number(token);
-        if (!isFinite(price)) {
-            invalid.push(token);
+        const price = Number(props["level" + n]);
+        if (!isFinite(price) || price <= 0 || seen[price]) {
             return;
         }
-        if (!seen[price]) {
-            seen[price] = true;
-            levels.push({ price, text: token });
-        }
+        seen[price] = true;
+        levels.push({ slot: n, price });
     });
-    return { levels, invalid };
+    return levels;
 }
 
 class tradeBrigadeLevels {
     init() {
-        const parsed = parseLevels(LEVELS);
-        this.levels = parsed.levels;
-        this.invalid = parsed.invalid;
+        this.levels = activeLevels(this.props);
     }
 
     map(d) {
@@ -85,10 +78,10 @@ class tradeBrigadeLevels {
         const style = LINE_STYLES[p.lineStyle] || LINE_STYLES.solid;
         const items = [];
 
-        this.levels.forEach((level, i) => {
+        this.levels.forEach(level => {
             items.push({
                 tag: "LineSegments",
-                key: "line-" + i,
+                key: "line-" + level.slot,
                 lines: [{
                     tag: "Line",
                     a: { x: du(0), y: du(level.price) },
@@ -106,43 +99,38 @@ class tradeBrigadeLevels {
             if (p.showLabels) {
                 items.push({
                     tag: "Text",
-                    key: "label-" + i,
+                    key: "label-" + level.slot,
                     // Same placement as Daily Levels: against the price scale, just above the line.
                     origin: { cs: "grid", h: "right", v: "top" },
                     point: { x: px(0), y: du(level.price) },
-                    text: level.text,
+                    text: String(level.price),
                     style: { fontSize: 11, fontWeight: "bold", fill: p.levelColour },
                     textAlignment: "leftAbove",
                     global: true
                 });
             }
         });
-
-        if (this.invalid.length) {
-            items.push({
-                tag: "Text",
-                key: "invalid-note",
-                origin: { cs: "grid", h: "left", v: "top" },
-                point: { x: px(NOTE_POSITION.x), y: px(NOTE_POSITION.y) },
-                text: "TradeBrigade levels: not a price: " + this.invalid.join(", "),
-                style: { fontSize: 11, fill: p.levelColour },
-                textAlignment: "centerBelow",
-                global: true
-            });
-        }
         return items;
     }
 }
+
+// level1, showLevel1, level2, showLevel2 ... so each box sits next to its switch,
+// followed by the style settings shared by all the lines.
+const params = {};
+DEFAULT_LEVELS.forEach((def, i) => {
+    const n = i + 1;
+    params["level" + n] = predef.paramSpecs.number(def, 0.01, 0);
+    params["showLevel" + n] = predef.paramSpecs.bool(true);
+});
+params.levelColour = predef.paramSpecs.color("#00ffff");
+params.lineWidth = predef.paramSpecs.number(2, 1, 1);
+params.lineStyle = lineStyleParam("solid");
+params.showLabels = predef.paramSpecs.bool(true);
 
 module.exports = {
     name: "exposureTradeTradeBrigadeLevels",
     description: "ExposureTrade - TradeBrigade Daily Levels",
     calculator: tradeBrigadeLevels,
-    params: {
-        levelColour: predef.paramSpecs.color("#00ffff"),
-        lineWidth: predef.paramSpecs.number(2, 1, 1),
-        lineStyle: lineStyleParam("solid"),
-        showLabels: predef.paramSpecs.bool(true)
-    },
+    params,
     tags: ["My Indicators"]
 };
